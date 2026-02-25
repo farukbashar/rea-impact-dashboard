@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>REA · Impact Metrics · Live Data</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   ▶ STEP 1: PASTE YOUR GOOGLE SHEET ID HERE
+   
+   Find it in your Sheet URL:
+   https://docs.google.com/spreadsheets/d/ ► THIS PART ◄ /edit
+   
+   ▶ STEP 2: MATCH YOUR EXACT SHEET TAB NAMES
+   (Check the tabs at the bottom of your Google Sheet)
+═══════════════════════════════════════════════════════ */
+
+const CONFIG = {
+  SHEET_ID:  "1cBGuef2GqfFUIo4t6LShpRsWRjRuhy7q2PXQknlF2dQ",   // ← Paste your Sheet ID
+  TABS: {
+    GRID: "Grid Extension",          // ← Tab name for Grid Extension data
+    MINI: "Mini Grid",               // ← Tab name for Mini Grid data
+    SHS:  "SAS_SHS",                 // ← Tab name for SHS data
+  },
+  // SIM v1.0 Default Coefficients (edit only if REA changes these)
+  COEFF: {
+    HH_SIZE:       6,        // persons per household
+    PETROL_HH:     14.8,     // litres/month (household generator)
+    PETROL_BIZ:    15.0,     // litres/month (business generator)
+    DIESEL_INST:   11.2,     // litres/month (institution generator)
+    EF_PETROL:     2.3,      // kg CO₂ per litre petrol
+    EF_DIESEL:     2.7,      // kg CO₂ per litre diesel
+    SOLAR_YIELD:   1.453,    // MWh/kWp/year
+    JOBS_PER_100:  8,        // FTE jobs per 100 connections (GOGLA)
+    INCOME_HH:     31,       // USD additional income per HH/year (GOGLA)
+    REVENUE_BIZ:   31,       // USD additional revenue per biz/year (GOGLA)
+    PROD_HRS:      9.5,      // productive hours/week per commercial connection
+  }
+};
+</script>
+
+<style>
+:root{
+  --ink:#0C1A0F;--ink-80:rgba(12,26,15,.80);--ink-50:rgba(12,26,15,.50);
+  --ink-30:rgba(12,26,15,.30);--ink-12:rgba(12,26,15,.12);--ink-06:rgba(12,26,15,.06);
+  --canvas:#F7F8F5;--surface:#FFFFFF;--surface-b:#F2F4EE;
+  --g900:#0A2614;--g800:#0F3D1E;--g700:#145229;--g600:#1A6B35;
+  --g500:#228744;--g400:#2CA857;--g300:#4EC97A;--g200:#A8E6BE;--g50:#EDF9F2;
+  --gold:#C49A1A;--gold-l:#F5E9C0;--teal:#0F7B82;--teal-l:#D0F0F2;
+  --amber:#B45309;--amber-l:#FEF3C7;--sidebar-w:260px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--canvas);color:var(--ink);font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased;display:flex;min-height:100vh}
+
+/* SIDEBAR */
+.sb{width:var(--sidebar-w);min-height:100vh;background:var(--g900);position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:200;border-right:1px solid rgba(255,255,255,.06)}
+.sb-logo{padding:26px 24px 20px;border-bottom:1px solid rgba(255,255,255,.07)}
+.logo-mark{width:40px;height:40px;background:var(--g400);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:13px;box-shadow:0 0 0 5px rgba(78,201,122,.12)}
+.logo-org{font-size:9px;color:rgba(255,255,255,.35);letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:3px}
+.logo-title{font-family:'Fraunces',serif;font-size:14px;font-weight:600;color:#fff;line-height:1.3}
+.sb-meta{padding:12px 24px 6px}
+.sim-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(78,201,122,.10);border:1px solid rgba(78,201,122,.18);border-radius:20px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--g300);letter-spacing:.04em}
+.sim-dot{width:5px;height:5px;border-radius:50%;background:var(--g300);animation:breathe 2.5s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.85)}}
+.sb-nav{flex:1;padding:4px 12px 12px;overflow-y:auto}
+.sb-nav::-webkit-scrollbar{width:0}
+.nav-sec{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.22);padding:16px 12px 6px}
+.ni{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;cursor:pointer;transition:background .15s;margin-bottom:1px;text-decoration:none;position:relative}
+.ni:hover{background:rgba(255,255,255,.06)}
+.ni.active{background:rgba(78,201,122,.14)}
+.ni.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--g300);border-radius:0 2px 2px 0}
+.ni-ico{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:13px;background:rgba(255,255,255,.05);flex-shrink:0}
+.ni.active .ni-ico{background:rgba(78,201,122,.18)}
+.ni-lbl{font-size:12px;font-weight:500;color:rgba(255,255,255,.60);line-height:1;margin-bottom:2px}
+.ni.active .ni-lbl{color:var(--g200);font-weight:600}
+.ni-code{font-size:9px;color:rgba(255,255,255,.25);letter-spacing:.05em}
+.ni.active .ni-code{color:rgba(78,201,122,.55)}
+.ni-badge{font-size:9px;font-weight:700;background:rgba(78,201,122,.15);color:var(--g300);padding:2px 7px;border-radius:10px;margin-left:auto}
+.sb-footer{padding:16px 24px;border-top:1px solid rgba(255,255,255,.07);font-size:10px;color:rgba(255,255,255,.22);line-height:1.7}
+
+/* MAIN */
+.main-wrapper{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* TOPBAR */
+.topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--ink-06);display:flex;align-items:center;padding:0 32px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(12,26,15,.06);gap:12px}
+.tb-bc{display:flex;align-items:center;gap:8px;flex:1}
+.bc-root{font-size:11px;color:var(--ink-30);font-weight:500}
+.bc-sep{color:var(--ink-30)}
+.bc-cur{font-size:11px;color:var(--ink);font-weight:600}
+.filter-pill{display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;background:var(--surface);border:1px solid var(--ink-12);border-radius:8px;font-size:11px;font-weight:500;color:var(--ink-80);cursor:pointer;transition:border-color .15s}
+.filter-pill:hover{border-color:var(--g400)}
+.filter-pill select{background:none;border:none;outline:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;color:var(--ink-80);cursor:pointer}
+.period-badge{display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;background:var(--g50);border:1px solid var(--g200);border-radius:8px;font-size:11px;font-weight:600;color:var(--g700);white-space:nowrap}
+.pd-dot{width:6px;height:6px;border-radius:50%;background:var(--g500);animation:breathe 2s infinite}
+.btn-ref{height:32px;padding:0 14px;background:var(--surface-b);border:1px solid var(--ink-12);border-radius:8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:var(--ink-80);cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s;white-space:nowrap}
+.btn-ref:hover{background:var(--ink-06)}
+.btn-ref.loading{opacity:.6;cursor:not-allowed}
+.last-sync{font-size:10px;color:var(--ink-30);white-space:nowrap}
+
+/* LOADING STATE */
+.loading-overlay{position:fixed;inset:0;background:rgba(247,248,245,.92);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.loading-overlay.hidden{display:none}
+.loading-spinner{width:40px;height:40px;border:3px solid var(--g200);border-top-color:var(--g500);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.loading-sub{font-size:12px;color:var(--ink-30)}
+
+/* ERROR BANNER */
+.error-banner{display:none;background:#FFF5F5;border:1px solid #FED7D7;border-radius:10px;padding:14px 18px;margin:16px 32px 0;font-size:12px;color:#9B2335;line-height:1.6}
+.error-banner.visible{display:block}
+.error-banner strong{font-weight:700}
+
+/* CONTENT */
+.page{padding:28px 32px}
+.hero{margin-bottom:24px}
+.hero-eye{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--g600);margin-bottom:6px}
+.hero-title{font-family:'Fraunces',serif;font-size:32px;font-weight:600;color:var(--ink);letter-spacing:-.025em;line-height:1.12;margin-bottom:7px}
+.hero-sub{font-size:13px;color:var(--ink-50);max-width:600px}
+.hero-meta{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap}
+.hero-stat{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-30);font-weight:500}
+.hero-stat span{font-weight:700;color:var(--ink-80)}
+
+/* TECH TABS */
+.tech-tabs{display:flex;gap:3px;background:var(--surface-b);border:1px solid var(--ink-06);border-radius:10px;padding:4px;width:fit-content;margin-bottom:28px}
+.tt{padding:7px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:all .18s;color:var(--ink-50);border:none;background:transparent;font-family:'Plus Jakarta Sans',sans-serif}
+.tt:hover{color:var(--ink);background:rgba(255,255,255,.6)}
+.tt.active{background:var(--surface);color:var(--g800);box-shadow:0 1px 4px rgba(12,26,15,.10)}
+
+/* SECTION */
+.section{margin-bottom:40px;scroll-margin-top:80px}
+.sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--ink-06)}
+.sec-tag{font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--g500);background:var(--g50);border:1px solid var(--g200);padding:3px 8px;border-radius:4px}
+.sec-name{font-family:'Fraunces',serif;font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.sec-count{font-size:11px;color:var(--ink-30);margin-left:auto}
+
+/* KPI CARDS */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--ink-06);border-radius:15px;padding:20px;position:relative;overflow:hidden;transition:box-shadow .2s,transform .2s}
+.kpi:hover{box-shadow:0 4px 18px rgba(12,26,15,.09);transform:translateY(-1px)}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:15px 15px 0 0;opacity:0;transition:opacity .2s}
+.kpi:hover::after,.kpi.accent-on::after{opacity:1}
+.kpi.g::after,.kpi.accent-on::after{background:linear-gradient(90deg,var(--g400),var(--g300));opacity:1}
+.kpi.teal::after{background:linear-gradient(90deg,var(--teal),#12A0A8);opacity:1}
+.kpi.gold::after{background:linear-gradient(90deg,var(--gold),#D4A820);opacity:1}
+.kpi-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.kpi-code{font-size:9px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--g600);background:var(--g50);border:1px solid var(--g100);padding:3px 7px;border-radius:4px}
+.kpi.gold .kpi-code{color:var(--gold);background:var(--gold-l);border-color:#E5C86A}
+.kpi.teal .kpi-code{color:var(--teal);background:var(--teal-l);border-color:#A0DEE2}
+.kpi-ico{width:28px;height:28px;border-radius:7px;background:var(--ink-06);display:flex;align-items:center;justify-content:center;font-size:13px}
+.kpi-num{font-family:'Fraunces',serif;font-size:32px;font-weight:600;color:var(--ink);letter-spacing:-.03em;line-height:1;margin-bottom:2px;transition:all .3s}
+.kpi-unit{font-size:13px;font-weight:400;color:var(--ink-30);font-family:'Plus Jakarta Sans',sans-serif}
+.kpi-lbl{font-size:11px;color:var(--ink-50);font-weight:500;margin-top:7px;line-height:1.4}
+.kpi-bar{height:3px;border-radius:2px;background:var(--ink-06);margin-top:10px;overflow:hidden}
+.kpi-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--g400),var(--g300));transition:width 1.2s cubic-bezier(.4,0,.2,1);width:0}
+.kpi.gold .kpi-fill{background:linear-gradient(90deg,var(--gold),#D4A820)}
+.kpi.teal .kpi-fill{background:linear-gradient(90deg,var(--teal),#12A0A8)}
+.kpi-trend{font-size:10px;font-weight:600;color:var(--g500);margin-top:6px}
+.kpi-trend.neg{color:var(--amber)}
+
+/* CHART GRIDS */
+.c2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.c3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+.c7-5{display:grid;grid-template-columns:7fr 5fr;gap:14px;margin-bottom:14px}
+.c4-6{display:grid;grid-template-columns:4fr 6fr;gap:14px;margin-bottom:14px}
+.chart-card{background:var(--surface);border:1px solid var(--ink-06);border-radius:15px;padding:22px;position:relative;overflow:hidden}
+.chart-card:hover{box-shadow:0 2px 10px rgba(12,26,15,.06)}
+.c-tag{position:absolute;top:18px;right:18px;font-size:9px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--ink-30);background:var(--ink-06);padding:3px 7px;border-radius:4px}
+.c-hdr{margin-bottom:16px}
+.c-title{font-family:'Fraunces',serif;font-size:14px;font-weight:600;color:var(--ink);letter-spacing:-.01em;margin-bottom:3px}
+.c-sub{font-size:11px;color:var(--ink-30)}
+
+/* METRIC BAND */
+.metric-band{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ink-06);border-radius:12px;overflow:hidden;border:1px solid var(--ink-06);margin-bottom:14px}
+.mb-item{background:var(--surface);padding:18px 22px}
+.mb-code{font-size:9px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--g500);margin-bottom:2px}
+.mb-lbl{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-30);margin-bottom:8px}
+.mb-val{font-family:'Fraunces',serif;font-size:26px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1}
+.mb-unit{font-size:12px;font-weight:400;color:var(--ink-30);font-family:'Plus Jakarta Sans',sans-serif}
+
+/* CLIMATE HERO */
+.climate-hero{background:linear-gradient(135deg,var(--g800),var(--g900));border-radius:18px;padding:32px 36px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;margin-bottom:14px;position:relative;overflow:hidden}
+.climate-hero::before{content:'';position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(78,201,122,.10),transparent 70%);pointer-events:none}
+.ch{padding:6px 28px 6px 0;position:relative;z-index:1}
+.ch+.ch{padding-left:28px;border-left:1px solid rgba(255,255,255,.09)}
+.ch-eye{font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(78,201,122,.65);margin-bottom:4px}
+.ch-code{font-size:9px;color:rgba(255,255,255,.20);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px}
+.ch-val{font-family:'Fraunces',serif;font-size:38px;font-weight:600;color:#fff;letter-spacing:-.03em;line-height:1;margin-bottom:3px;transition:all .3s}
+.ch-unit{font-size:12px;font-weight:400;color:rgba(255,255,255,.40);font-family:'Plus Jakarta Sans',sans-serif}
+.ch-lbl{font-size:11px;color:rgba(255,255,255,.45);margin-top:7px}
+
+/* JOBS */
+.jobs-hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.jh{background:var(--surface);border:1px solid var(--ink-06);border-radius:15px;padding:22px;position:relative;overflow:hidden;transition:box-shadow .2s}
+.jh:hover{box-shadow:0 4px 18px rgba(12,26,15,.09)}
+.jh-code{position:absolute;top:18px;right:18px;font-size:9px;font-weight:700;color:var(--ink-30);letter-spacing:.08em}
+.jh-num{font-family:'Fraunces',serif;font-size:34px;font-weight:600;color:var(--ink);letter-spacing:-.03em;line-height:1;margin-bottom:3px}
+.jh-unit{font-size:12px;font-weight:400;color:var(--ink-30)}
+.jh-lbl{font-size:11px;color:var(--ink-50);font-weight:500;margin-top:9px;line-height:1.45}
+.jh-accent{position:absolute;bottom:0;left:0;right:0;height:3px}
+
+/* DELIVERY */
+.deliv-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.dv{background:var(--surface);border:1px solid var(--ink-06);border-radius:12px;padding:18px}
+.dv-tech{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.10em;color:var(--ink-30);margin-bottom:7px}
+.dv-days{font-family:'Fraunces',serif;font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1;margin-bottom:2px}
+.dv-lbl{font-size:10px;color:var(--ink-50)}
+.dv-bar{height:4px;background:var(--ink-06);border-radius:2px;margin-top:12px;overflow:hidden}
+.dv-fill{height:100%;border-radius:2px;background:var(--g400);transition:width 1.2s cubic-bezier(.4,0,.2,1);width:0}
+
+/* TABLES */
+.tbl-card{background:var(--surface);border:1px solid var(--ink-06);border-radius:15px;overflow:hidden;margin-bottom:14px}
+.tbl-hdr{padding:20px 22px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink-06)}
+.tbl-title{font-family:'Fraunces',serif;font-size:14px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.tbl-sub{font-size:11px;color:var(--ink-30);margin-top:2px}
+.tbl-acts{display:flex;gap:8px}
+.tbl-btn{height:28px;padding:0 10px;background:var(--surface-b);border:1px solid var(--ink-06);border-radius:6px;font-size:10px;font-weight:600;color:var(--ink-50);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:.04em;text-transform:uppercase}
+.tbl-btn:hover{border-color:var(--g300);color:var(--g600)}
+table{width:100%;border-collapse:collapse}
+thead th{padding:9px 14px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-30);background:var(--surface-b);text-align:left;border-bottom:1px solid var(--ink-06);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--ink-06);transition:background .12s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--canvas)}
+tbody td{padding:11px 14px;font-size:12px;color:var(--ink);vertical-align:middle}
+.td-code{font-family:'Fraunces',serif;font-weight:600;font-size:13px;color:var(--g700)}
+.td-val{font-weight:700;font-size:13px}
+.td-fam{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;letter-spacing:.03em}
+.fam-ea{background:var(--g50);color:var(--g700);border:1px solid var(--g200)}
+.fam-es{background:var(--teal-l);color:var(--teal);border:1px solid #A0DEE2}
+.fam-inf{background:var(--ink-06);color:var(--ink-50);border:1px solid var(--ink-12)}
+.fam-eco{background:var(--gold-l);color:var(--gold);border:1px solid #E5C86A}
+.fam-cost{background:var(--amber-l);color:var(--amber);border:1px solid #FCD34D}
+.fam-cl{background:var(--g50);color:var(--g600);border:1px solid var(--g200)}
+.fam-jp{background:#FFE4E6;color:#9F1239;border:1px solid #FECDD3}
+.fam-del{background:var(--ink-06);color:var(--ink-50);border:1px solid var(--ink-12)}
+.prog-cell{display:flex;align-items:center;gap:9px;min-width:110px}
+.prog-bar{flex:1;height:4px;background:var(--ink-06);border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--g400),var(--g300))}
+.prog-pct{font-size:10px;font-weight:600;color:var(--ink-30);min-width:26px;text-align:right}
+.tier-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.t3{background:var(--g50);color:var(--g600);border:1px solid var(--g200)}
+.t4{background:var(--gold-l);color:var(--gold);border:1px solid #E5C86A}
+.t5{background:var(--teal-l);color:var(--teal);border:1px solid #A0DEE2}
+
+/* DATA SOURCE BADGE */
+.ds-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--g600);font-weight:600;background:var(--g50);border:1px solid var(--g200);padding:3px 9px;border-radius:6px;margin-left:8px}
+.ds-icon{font-size:11px}
+
+@keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.kpi,.chart-card,.tbl-card,.climate-hero,.jh,.dv,.metric-band{animation:slideUp .45s cubic-bezier(.4,0,.2,1) both}
+.kpi:nth-child(1){animation-delay:.04s}.kpi:nth-child(2){animation-delay:.07s}
+.kpi:nth-child(3){animation-delay:.10s}.kpi:nth-child(4){animation-delay:.13s}
+.kpi:nth-child(5){animation-delay:.16s}.kpi:nth-child(6){animation-delay:.19s}
+.jh:nth-child(1){animation-delay:.04s}.jh:nth-child(2){animation-delay:.08s}
+.jh:nth-child(3){animation-delay:.12s}.jh:nth-child(4){animation-delay:.16s}
+.dv:nth-child(1){animation-delay:.04s}.dv:nth-child(2){animation-delay:.07s}
+.dv:nth-child(3){animation-delay:.10s}.dv:nth-child(4){animation-delay:.13s}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loader">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Loading your data…</div>
+  <div class="loading-sub" id="loader-sub">Fetching from Google Sheets</div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sb">
+  <div class="sb-logo">
+    <div class="logo-mark">
+      <svg width="21" height="21" viewBox="0 0 22 22" fill="none"><path d="M11 2L13.8 8H20L14.6 11.6L16.8 18L11 14.2L5.2 18L7.4 11.6L2 8H8.2L11 2Z" fill="white" fill-opacity=".92"/></svg>
+    </div>
+    <div class="logo-org">Rural Electrification Agency</div>
+    <div class="logo-title">Standardised Impact Metrics</div>
+  </div>
+  <div class="sb-meta"><div class="sim-chip"><div class="sim-dot"></div>SIM v1.0 · Live Data</div></div>
+  <nav class="sb-nav">
+    <div class="nav-sec">Metric Families</div>
+    <a href="#ea"   class="ni active" onclick="setNav(this)"><div class="ni-ico">⚡</div><div><div class="ni-lbl">Energy Access</div><div class="ni-code">EA1 — EA12</div></div><span class="ni-badge">12</span></a>
+    <a href="#es"   class="ni"        onclick="setNav(this)"><div class="ni-ico">☀️</div><div><div class="ni-lbl">Energy Supply</div><div class="ni-code">ES1 — ES8</div></div><span class="ni-badge">8</span></a>
+    <a href="#inf"  class="ni"        onclick="setNav(this)"><div class="ni-ico">🏗️</div><div><div class="ni-lbl">Infrastructure</div><div class="ni-code">INF1 — INF5</div></div><span class="ni-badge">5</span></a>
+    <a href="#eco"  class="ni"        onclick="setNav(this)"><div class="ni-ico">₦</div><div><div class="ni-lbl">Consumer Economics</div><div class="ni-code">ECO1 — ECO3</div></div><span class="ni-badge">3</span></a>
+    <a href="#cost" class="ni"        onclick="setNav(this)"><div class="ni-ico">💰</div><div><div class="ni-lbl">Cost & Efficiency</div><div class="ni-code">COST1 — COST7</div></div><span class="ni-badge">7</span></a>
+    <a href="#cl"   class="ni"        onclick="setNav(this)"><div class="ni-ico">🌿</div><div><div class="ni-lbl">Climate & Environment</div><div class="ni-code">CL1 — CL7</div></div><span class="ni-badge">7</span></a>
+    <a href="#jp"   class="ni"        onclick="setNav(this)"><div class="ni-ico">👷</div><div><div class="ni-lbl">Jobs & Income</div><div class="ni-code">JP1 — JP4</div></div><span class="ni-badge">4</span></a>
+    <a href="#del"  class="ni"        onclick="setNav(this)"><div class="ni-ico">📅</div><div><div class="ni-lbl">Delivery Performance</div><div class="ni-code">DEL1</div></div><span class="ni-badge">1</span></a>
+    <div class="nav-sec">Reference</div>
+    <a href="#all"  class="ni"        onclick="setNav(this)"><div class="ni-ico">📋</div><div><div class="ni-lbl">All Metrics</div><div class="ni-code">SIM Full Library</div></div></a>
+  </nav>
+  <div class="sb-footer">Capital Project Impact Tool · SIM v1.0<br>GOGLA V4.0 · REA Nigeria © 2026</div>
+</aside>
+
+<!-- MAIN -->
+<div class="main-wrapper">
+  <header class="topbar">
+    <div class="tb-bc">
+      <span class="bc-root">REA Portal</span>
+      <span class="bc-sep">/</span>
+      <span class="bc-cur">Impact Metrics Dashboard</span>
+      <span class="ds-badge"><span class="ds-icon">📊</span>Live · Google Sheets</span>
+    </div>
+    <div class="filter-pill">
+      <svg width="11" height="11" viewBox="0 0 12 12"><path d="M1 3h10M3 6h6M5 9h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <select id="stateFilter" onchange="applyFilter()">
+        <option value="All">All States</option>
+      </select>
+    </div>
+    <div class="period-badge"><div class="pd-dot"></div><span id="period-label">Loading…</span></div>
+    <button class="btn-ref" id="refreshBtn" onclick="loadData()">
+      <svg width="11" height="11" viewBox="0 0 12 12"><path d="M10 6A4 4 0 0 1 2.3 8.5M2 6A4 4 0 0 1 9.7 3.5M10 1v3h-3M2 11V8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Refresh
+    </button>
+    <span class="last-sync" id="lastSync"></span>
+  </header>
+
+  <!-- ERROR -->
+  <div class="error-banner" id="errorBanner"></div>
+
+  <main class="page">
+    <div class="hero">
+      <div class="hero-eye">Federal Republic of Nigeria · REA SIM v1.0</div>
+      <h1 class="hero-title">Standardised Impact Metrics</h1>
+      <p class="hero-sub">A unified framework measuring the social, economic, energy, and climate impact of rural electrification across Nigeria's off-grid and grid extension programmes.</p>
+      <div class="hero-meta">
+        <div class="hero-stat">Grid Extension projects: <span id="stat-ge">—</span></div>
+        <div class="hero-stat">Mini-Grid sites: <span id="stat-mg">—</span></div>
+        <div class="hero-stat">SHS units: <span id="stat-shs">—</span></div>
+        <div class="hero-stat">States covered: <span id="stat-states">—</span></div>
+      </div>
+    </div>
+
+    <div class="tech-tabs">
+      <button class="tt active" onclick="setTech('All',this)">All Technologies</button>
+      <button class="tt" onclick="setTech('GE',this)">Grid Extension</button>
+      <button class="tt" onclick="setTech('MG',this)">Mini-Grid</button>
+      <button class="tt" onclick="setTech('SHS',this)">Solar Home Systems</button>
+    </div>
+
+    <!-- ENERGY ACCESS -->
+    <section class="section" id="ea">
+      <div class="sec-hdr"><span class="sec-tag">EA1 – EA12</span><span class="sec-name">Energy Access</span><span class="sec-count">12 metrics</span></div>
+      <div class="kpi-row">
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">EA1</span><div class="kpi-ico">👥</div></div><div class="kpi-num"><span id="ea1">—</span></div><div class="kpi-lbl">People with Electricity Access</div><div class="kpi-bar"><div class="kpi-fill" id="ea1-bar"></div></div></div>
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">EA4</span><div class="kpi-ico">🏠</div></div><div class="kpi-num"><span id="ea4">—</span></div><div class="kpi-lbl">Households Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="ea4-bar"></div></div></div>
+        <div class="kpi gold"><div class="kpi-hdr"><span class="kpi-code">EA5</span><div class="kpi-ico">🏪</div></div><div class="kpi-num"><span id="ea5">—</span></div><div class="kpi-lbl">Businesses & MSMEs Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="ea5-bar"></div></div></div>
+        <div class="kpi teal"><div class="kpi-hdr"><span class="kpi-code">EA6</span><div class="kpi-ico">🏥</div></div><div class="kpi-num"><span id="ea6">—</span></div><div class="kpi-lbl">Public Institutions Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="ea6-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">EA6a</span><div class="kpi-ico">🏥</div></div><div class="kpi-num"><span id="ea6h">—</span></div><div class="kpi-lbl">Hospitals Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="ea6h-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">EA6b</span><div class="kpi-ico">🏫</div></div><div class="kpi-num"><span id="ea6s">—</span></div><div class="kpi-lbl">Schools Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="ea6s-bar"></div></div></div>
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">EA11</span><div class="kpi-ico">🔌</div></div><div class="kpi-num"><span id="ea11">—</span></div><div class="kpi-lbl">Total Connections (All Technologies)</div><div class="kpi-bar"><div class="kpi-fill" id="ea11-bar"></div></div></div>
+      </div>
+      <div class="c7-5">
+        <div class="chart-card"><span class="c-tag">EA11 · By State</span><div class="c-hdr"><div class="c-title">Connections by State & Technology</div><div class="c-sub">Total connections disaggregated by delivery model</div></div><div style="height:250px"><canvas id="stateBar"></canvas></div></div>
+        <div class="chart-card"><span class="c-tag">EA6</span><div class="c-hdr"><div class="c-title">Institutions by Type</div><div class="c-sub">Hospitals, Schools, Public Facilities</div></div><div style="height:250px"><canvas id="instType"></canvas></div></div>
+      </div>
+      <div class="tbl-card">
+        <div class="tbl-hdr">
+          <div><div class="tbl-title">Project List — All Technologies</div><div class="tbl-sub">All submitted projects with connection counts and EA12 tier classification</div></div>
+          <div class="tbl-acts"><button class="tbl-btn" onclick="exportCSV()">Export CSV</button></div>
+        </div>
+        <table><thead><tr><th>Programme</th><th>State</th><th>LGA</th><th>Community/Site</th><th>Technology</th><th>Residential</th><th>Commercial</th><th>Institutions</th><th>Total</th><th>EA12 Tier</th></tr></thead>
+        <tbody id="proj-tbody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- ENERGY SUPPLY -->
+    <section class="section" id="es">
+      <div class="sec-hdr"><span class="sec-tag">ES1 – ES8</span><span class="sec-name">Energy Supply, Reliability & Service Level</span><span class="sec-count">8 metrics</span></div>
+      <div class="metric-band">
+        <div class="mb-item"><div class="mb-code">ES1</div><div class="mb-lbl">Total PV Deployed</div><div class="mb-val" id="es1-band">— <span class="mb-unit">MWp</span></div></div>
+        <div class="mb-item"><div class="mb-code">ES5</div><div class="mb-lbl">Annual Energy Generated (est.)</div><div class="mb-val" id="es5-band">— <span class="mb-unit">GWh/yr</span></div></div>
+        <div class="mb-item"><div class="mb-code">ES7</div><div class="mb-lbl">Energy per Connection per Day</div><div class="mb-val" id="es7-band">— <span class="mb-unit">kWh/conn/day</span></div></div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi teal"><div class="kpi-hdr"><span class="kpi-code">ES1</span><div class="kpi-ico">☀️</div></div><div class="kpi-num"><span id="es1">—</span><span class="kpi-unit"> MWp</span></div><div class="kpi-lbl">Installed PV Capacity</div><div class="kpi-bar"><div class="kpi-fill" id="es1-bar"></div></div></div>
+        <div class="kpi teal"><div class="kpi-hdr"><span class="kpi-code">ES3</span><div class="kpi-ico">⚙️</div></div><div class="kpi-num"><span id="es3">—</span><span class="kpi-unit"> MW</span></div><div class="kpi-lbl">Installed Inverter Capacity</div><div class="kpi-bar"><div class="kpi-fill" id="es3-bar"></div></div></div>
+        <div class="kpi teal"><div class="kpi-hdr"><span class="kpi-code">ES4</span><div class="kpi-ico">🔋</div></div><div class="kpi-num"><span id="es4">—</span><span class="kpi-unit"> MWh</span></div><div class="kpi-lbl">Installed Battery Capacity</div><div class="kpi-bar"><div class="kpi-fill" id="es4-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">ES5</span><div class="kpi-ico">⚡</div></div><div class="kpi-num"><span id="es5">—</span><span class="kpi-unit"> GWh</span></div><div class="kpi-lbl">Annual Energy Generated (est.)</div><div class="kpi-bar"><div class="kpi-fill" id="es5-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">ES8</span><div class="kpi-ico">🔌</div></div><div class="kpi-num"><span id="es8">—</span><span class="kpi-unit"> MVA</span></div><div class="kpi-lbl">Transformer Capacity Added (GE)</div><div class="kpi-bar"><div class="kpi-fill" id="es8-bar"></div></div></div>
+      </div>
+      <div class="c2">
+        <div class="chart-card"><span class="c-tag">ES1 · Programme</span><div class="c-hdr"><div class="c-title">PV Capacity by Programme</div><div class="c-sub">MWp installed per REA programme</div></div><div style="height:210px"><canvas id="pvProg"></canvas></div></div>
+        <div class="chart-card"><span class="c-tag">ES5</span><div class="c-hdr"><div class="c-title">Estimated Annual Energy by Technology</div><div class="c-sub">GWh/yr using Solar Yield = 1.453 MWh/kWp</div></div><div style="height:210px"><canvas id="energyTech"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- INFRASTRUCTURE -->
+    <section class="section" id="inf">
+      <div class="sec-hdr"><span class="sec-tag">INF1 – INF5</span><span class="sec-name">Infrastructure Delivery</span><span class="sec-count">5 metrics</span></div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">INF1</span><div class="kpi-ico">🗺️</div></div><div class="kpi-num"><span id="inf1">—</span><span class="kpi-unit"> km</span></div><div class="kpi-lbl">Network Length Deployed</div><div class="kpi-bar"><div class="kpi-fill" id="inf1-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">INF2</span><div class="kpi-ico">🪧</div></div><div class="kpi-num"><span id="inf2">—</span></div><div class="kpi-lbl">Total Poles Installed</div><div class="kpi-bar"><div class="kpi-fill" id="inf2-bar"></div></div></div>
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">INF3</span><div class="kpi-ico">🏗️</div></div><div class="kpi-num"><span id="inf3">—</span></div><div class="kpi-lbl">Mini-Grid Sites Deployed</div><div class="kpi-bar"><div class="kpi-fill" id="inf3-bar"></div></div></div>
+        <div class="kpi gold"><div class="kpi-hdr"><span class="kpi-code">INF4</span><div class="kpi-ico">📍</div></div><div class="kpi-num"><span id="inf4">—</span></div><div class="kpi-lbl">Avg. Connections per Mini-Grid Site</div><div class="kpi-bar"><div class="kpi-fill" id="inf4-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">INF5</span><div class="kpi-ico">🔆</div></div><div class="kpi-num"><span id="inf5">—</span></div><div class="kpi-lbl">Solar Home Systems Deployed</div><div class="kpi-bar"><div class="kpi-fill" id="inf5-bar"></div></div></div>
+      </div>
+    </section>
+
+    <!-- ECONOMICS -->
+    <section class="section" id="eco">
+      <div class="sec-hdr"><span class="sec-tag">ECO1 – ECO3</span><span class="sec-name">Affordability & Consumer Economics</span><span class="sec-count">3 metrics</span></div>
+      <div class="c4-6">
+        <div class="kpi-row" style="grid-template-columns:1fr;margin-bottom:0">
+          <div class="kpi gold"><div class="kpi-hdr"><span class="kpi-code">ECO1</span></div><div class="kpi-num">₦<span id="eco1">—</span><span class="kpi-unit">/kWh</span></div><div class="kpi-lbl">Average Tariff — Mini-Grid</div><div class="kpi-bar"><div class="kpi-fill" id="eco1-bar"></div></div></div>
+          <div class="kpi gold"><div class="kpi-hdr"><span class="kpi-code">ECO2</span></div><div class="kpi-num">$<span id="eco2">—</span><span class="kpi-unit">/HH/yr</span></div><div class="kpi-lbl">Avg. Household Annual Cost Savings</div><div class="kpi-bar"><div class="kpi-fill" id="eco2-bar"></div></div></div>
+          <div class="kpi gold"><div class="kpi-hdr"><span class="kpi-code">ECO3</span></div><div class="kpi-num">$<span id="eco3">—</span><span class="kpi-unit">M/yr</span></div><div class="kpi-lbl">Total Household Cost Savings</div><div class="kpi-bar"><div class="kpi-fill" id="eco3-bar"></div></div></div>
+        </div>
+        <div class="chart-card"><span class="c-tag">ECO1</span><div class="c-hdr"><div class="c-title">Average Tariff by State (₦/kWh)</div><div class="c-sub">Mini-grid electricity tariff variation across reporting states</div></div><div style="height:200px"><canvas id="tariffBar"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- COST -->
+    <section class="section" id="cost">
+      <div class="sec-hdr"><span class="sec-tag">COST1 – COST7</span><span class="sec-name">Project Cost & Cost Efficiency</span><span class="sec-count">7 metrics</span></div>
+      <div class="kpi-row">
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">COST7</span></div><div class="kpi-num">₦<span id="cost7">—</span><span class="kpi-unit">B</span></div><div class="kpi-lbl">Cumulative Investment (All Technologies)</div><div class="kpi-bar"><div class="kpi-fill" id="cost7-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">COST2</span></div><div class="kpi-num">₦<span id="cost2">—</span><span class="kpi-unit">K/conn</span></div><div class="kpi-lbl">CAPEX per Connection</div><div class="kpi-bar"><div class="kpi-fill" id="cost2-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">COST4</span></div><div class="kpi-num">₦<span id="cost4">—</span><span class="kpi-unit">K/person</span></div><div class="kpi-lbl">Cost per Person Electrified</div><div class="kpi-bar"><div class="kpi-fill" id="cost4-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">COST5</span></div><div class="kpi-num">₦<span id="cost5">—</span><span class="kpi-unit">M/comm</span></div><div class="kpi-lbl">Avg. Cost per Community</div><div class="kpi-bar"><div class="kpi-fill" id="cost5-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">COST6</span></div><div class="kpi-num">₦<span id="cost6">—</span><span class="kpi-unit">M/proj</span></div><div class="kpi-lbl">Avg. Mini-Grid Project Cost</div><div class="kpi-bar"><div class="kpi-fill" id="cost6-bar"></div></div></div>
+      </div>
+      <div class="c2">
+        <div class="chart-card"><span class="c-tag">COST1</span><div class="c-hdr"><div class="c-title">Capital Investment by Technology</div><div class="c-sub">Total CAPEX per delivery model (₦ Billion)</div></div><div style="height:200px"><canvas id="costTech"></canvas></div></div>
+        <div class="chart-card"><span class="c-tag">COST1 · State</span><div class="c-hdr"><div class="c-title">Investment by State</div><div class="c-sub">Total project cost per state (₦ Million)</div></div><div style="height:200px"><canvas id="costState"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- CLIMATE -->
+    <section class="section" id="cl">
+      <div class="sec-hdr"><span class="sec-tag">CL1 – CL7</span><span class="sec-name">Climate & Environmental Benefit</span><span class="sec-count">7 metrics</span></div>
+      <div class="climate-hero">
+        <div class="ch"><div class="ch-eye">Total CO₂ Avoided</div><div class="ch-code">CL7</div><div class="ch-val" id="cl7-hero">—</div><div class="ch-lbl">Combined annual reduction across all connection types</div></div>
+        <div class="ch"><div class="ch-eye">Petrol Displaced — Households</div><div class="ch-code">CL1</div><div class="ch-val" id="cl1-hero">—</div><div class="ch-lbl">14.8 L/month × residential connections × 12</div></div>
+        <div class="ch"><div class="ch-eye">CO₂ Avoided — Households</div><div class="ch-code">CL2</div><div class="ch-val" id="cl2-hero">—</div><div class="ch-lbl">CL1 × 2.3 kg CO₂/L emission factor (Metlink)</div></div>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi g accent-on"><div class="kpi-hdr"><span class="kpi-code">CL1</span></div><div class="kpi-num"><span id="cl1">—</span><span class="kpi-unit"> M L/yr</span></div><div class="kpi-lbl">Petrol Avoided — Households</div><div class="kpi-bar"><div class="kpi-fill" id="cl1-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">CL2</span></div><div class="kpi-num"><span id="cl2">—</span><span class="kpi-unit"> K tCO₂</span></div><div class="kpi-lbl">CO₂ Avoided — Households</div><div class="kpi-bar"><div class="kpi-fill" id="cl2-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">CL3</span></div><div class="kpi-num"><span id="cl3">—</span><span class="kpi-unit"> M L/yr</span></div><div class="kpi-lbl">Petrol Avoided — Businesses</div><div class="kpi-bar"><div class="kpi-fill" id="cl3-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">CL4</span></div><div class="kpi-num"><span id="cl4">—</span><span class="kpi-unit"> K tCO₂</span></div><div class="kpi-lbl">CO₂ Avoided — Businesses</div><div class="kpi-bar"><div class="kpi-fill" id="cl4-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">CL5</span></div><div class="kpi-num"><span id="cl5">—</span><span class="kpi-unit"> M L/yr</span></div><div class="kpi-lbl">Diesel Avoided — Institutions</div><div class="kpi-bar"><div class="kpi-fill" id="cl5-bar"></div></div></div>
+        <div class="kpi"><div class="kpi-hdr"><span class="kpi-code">CL7</span></div><div class="kpi-num"><span id="cl7">—</span><span class="kpi-unit"> K tCO₂</span></div><div class="kpi-lbl">Total CO₂ Avoided</div><div class="kpi-bar"><div class="kpi-fill" id="cl7-bar"></div></div></div>
+      </div>
+      <div class="c2">
+        <div class="chart-card"><span class="c-tag">CL2 · CL4 · CL6</span><div class="c-hdr"><div class="c-title">CO₂ Avoided by Category</div><div class="c-sub">Annual tCO₂ breakdown — households, businesses, institutions</div></div><div style="height:200px"><canvas id="co2Cat"></canvas></div></div>
+        <div class="chart-card"><span class="c-tag">CL1 · CL3 · CL5</span><div class="c-hdr"><div class="c-title">Fuel Displaced by Category</div><div class="c-sub">Litres per year (petrol & diesel) using SIM v1.0 default coefficients</div></div><div style="height:200px"><canvas id="fuelDisp"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- JOBS -->
+    <section class="section" id="jp">
+      <div class="sec-hdr"><span class="sec-tag">JP1 – JP4</span><span class="sec-name">Jobs, Income & Productive Use</span><span class="sec-count">4 metrics</span></div>
+      <div class="jobs-hero">
+        <div class="jh"><div class="jh-code">JP1</div><div class="jh-num" id="jp1">—</div><div class="jh-lbl">Direct Jobs Created (FTE)<br><span style="color:var(--ink-30);font-weight:400">8 FTE per 100 connections · GOGLA</span></div><div class="jh-accent" style="background:linear-gradient(90deg,var(--gold),#D4A820)"></div></div>
+        <div class="jh"><div class="jh-code">JP2</div><div class="jh-num" id="jp2">—</div><div class="jh-lbl">Additional Business Revenue<br><span style="color:var(--ink-30);font-weight:400">$31/connection · GOGLA West Africa</span></div><div class="jh-accent" style="background:linear-gradient(90deg,var(--g400),var(--g300))"></div></div>
+        <div class="jh"><div class="jh-code">JP3</div><div class="jh-num" id="jp3">—</div><div class="jh-lbl">Additional Household Income<br><span style="color:var(--ink-30);font-weight:400">$31/household/year · GOGLA</span></div><div class="jh-accent" style="background:linear-gradient(90deg,var(--teal),#12A0A8)"></div></div>
+        <div class="jh"><div class="jh-code">JP4</div><div class="jh-num" id="jp4">—</div><div class="jh-lbl">Productive Hours Unlocked<br><span style="color:var(--ink-30);font-weight:400">9.5 hrs/week × 52 × commercial connections</span></div><div class="jh-accent" style="background:linear-gradient(90deg,var(--amber),#D97706)"></div></div>
+      </div>
+    </section>
+
+    <!-- DELIVERY -->
+    <section class="section" id="del">
+      <div class="sec-hdr"><span class="sec-tag">DEL1</span><span class="sec-name">Delivery Performance</span><span class="sec-count">1 metric</span></div>
+      <div class="deliv-row">
+        <div class="dv"><div class="dv-tech">All Technologies · Avg.</div><div class="dv-days" id="del-all">—</div><div class="dv-lbl">Average delivery days</div><div class="dv-bar"><div class="dv-fill" id="del-all-bar"></div></div></div>
+        <div class="dv"><div class="dv-tech">Grid Extension</div><div class="dv-days" id="del-ge">—</div><div class="dv-lbl">Average days to commissioning</div><div class="dv-bar"><div class="dv-fill" id="del-ge-bar" style="background:var(--g600)"></div></div></div>
+        <div class="dv"><div class="dv-tech">Mini-Grid</div><div class="dv-days" id="del-mg">—</div><div class="dv-lbl">Average days to commissioning</div><div class="dv-bar"><div class="dv-fill" id="del-mg-bar" style="background:var(--g500)"></div></div></div>
+        <div class="dv"><div class="dv-tech">Solar Home Systems</div><div class="dv-days" id="del-shs">—</div><div class="dv-lbl">Average days to commissioning</div><div class="dv-bar"><div class="dv-fill" id="del-shs-bar" style="background:var(--g300)"></div></div></div>
+      </div>
+      <div class="chart-card"><span class="c-tag">DEL1 · State</span><div class="c-hdr"><div class="c-title">Average Delivery Days by State</div><div class="c-sub">Mean days from project start to commissioning across all technologies</div></div><div style="height:220px"><canvas id="delivState"></canvas></div></div>
+    </section>
+
+    <!-- ALL METRICS -->
+    <section class="section" id="all">
+      <div class="sec-hdr"><span class="sec-tag">SIM v1.0 Full Library</span><span class="sec-name">All Metrics at a Glance</span><span class="sec-count">Live computed values</span></div>
+      <div class="tbl-card">
+        <div class="tbl-hdr">
+          <div><div class="tbl-title">Standardised Impact Metrics — Master Reference</div><div class="tbl-sub">All SIM v1.0 metrics computed from your live Google Sheet data</div></div>
+          <div class="tbl-acts"><button class="tbl-btn" onclick="exportMetrics()">Export XLSX</button></div>
+        </div>
+        <table><thead><tr><th>Code</th><th>Metric Name</th><th>Family</th><th>Computed Value</th><th>Unit</th><th>Method</th></tr></thead>
+        <tbody id="all-tbody"></tbody></table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   DATA ENGINE
+══════════════════════════════════════════════════ */
+const C = CONFIG.COEFF;
+let RAW = { ge:[], mg:[], shs:[] };
+let METRICS = {};
+let CHARTS = {};
+let currentTech = 'All';
+let currentState = 'All';
+
+function csvUrl(tab) {
+  return `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+}
+
+// Find column value by fuzzy header match
+function col(row, ...keys) {
+  for (const key of keys) {
+    const k = key.toLowerCase().trim();
+    for (const [h, v] of Object.entries(row)) {
+      if (h.toLowerCase().trim().includes(k)) {
+        return v;
+      }
+    }
+  }
+  return '';
+}
+
+function num(val) {
+  if (val === null || val === undefined || val === '') return 0;
+  return parseFloat(String(val).replace(/[₦,$,\s,]/g,'')) || 0;
+}
+
+function parseDate(val) {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d) ? null : d;
+}
+
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  return Math.round(Math.abs(b - a) / 86400000);
+}
+
+function filterByTechState(data, tech) {
+  let d = data;
+  if (currentState !== 'All') {
+    d = d.filter(r => (col(r,'state') || '').toLowerCase() === currentState.toLowerCase());
+  }
+  return d;
+}
+
+/* ══════════════════════════════════════════════════
+   COMPUTE ALL SIM METRICS
+══════════════════════════════════════════════════ */
+function computeMetrics(ge, mg, shs) {
+  // Filter by state
+  const gef = currentState === 'All' ? ge : ge.filter(r => col(r,'state').toLowerCase() === currentState.toLowerCase());
+  const mgf = currentState === 'All' ? mg : mg.filter(r => col(r,'state').toLowerCase() === currentState.toLowerCase());
+  const shsf = currentState === 'All' ? shs : shs.filter(r => col(r,'state').toLowerCase() === currentState.toLowerCase());
+
+  // Filter by tech
+  const useGE  = currentTech === 'All' || currentTech === 'GE';
+  const useMG  = currentTech === 'All' || currentTech === 'MG';
+  const useSHS = currentTech === 'All' || currentTech === 'SHS';
+
+  const activeGE  = useGE  ? gef  : [];
+  const activeMG  = useMG  ? mgf  : [];
+  const activeSHS = useSHS ? shsf : [];
+
+  // Connection counts
+  const geRes  = activeGE.reduce((s,r) => s + num(col(r,'residential','household')), 0);
+  const geBiz  = activeGE.reduce((s,r) => s + num(col(r,'commercial','business','msme')), 0);
+  const geInst = activeGE.reduce((s,r) => s + num(col(r,'institutional','institution')), 0);
+  const geHosp = activeGE.reduce((s,r) => s + num(col(r,'hospital')), 0);
+  const geSchool = activeGE.reduce((s,r) => s + num(col(r,'school')), 0);
+  const gePub  = activeGE.reduce((s,r) => s + num(col(r,'public fac','facility')), 0);
+
+  const mgRes  = activeMG.reduce((s,r) => s + num(col(r,'residential','household')), 0);
+  const mgBiz  = activeMG.reduce((s,r) => s + num(col(r,'commercial','business','msme')), 0);
+  const mgInst = activeMG.reduce((s,r) => s + num(col(r,'institutional','institution')), 0);
+  const mgHosp = activeMG.reduce((s,r) => s + num(col(r,'hospital')), 0);
+  const mgSchool = activeMG.reduce((s,r) => s + num(col(r,'school')), 0);
+
+  const shsCount = activeSHS.length; // each row = 1 SHS unit
+
+  // EA metrics
+  const totalRes  = geRes + mgRes;
+  const totalBiz  = geBiz + mgBiz;
+  const totalInst = geInst + mgInst;
+  const totalHosp = geHosp + mgHosp;
+  const totalSchool = geSchool + mgSchool;
+  const ea4   = totalRes + shsCount;       // households
+  const ea5   = totalBiz;                  // businesses
+  const ea6   = totalInst;                 // institutions
+  const ea6h  = totalHosp;
+  const ea6s  = totalSchool;
+  const ea11  = totalRes + totalBiz + totalInst + shsCount; // total connections
+  const ea1   = ea4 * C.HH_SIZE;           // people
+
+  // INF metrics
+  const inf1  = activeGE.reduce((s,r) => s + num(col(r,'network','km','length')), 0);
+  const inf2  = activeGE.reduce((s,r) => s + num(col(r,'poles','pole')), 0);
+  const inf3  = activeMG.length;            // MG sites
+  const mgTotalConn = mgRes + mgBiz + mgInst;
+  const inf4  = inf3 > 0 ? mgTotalConn / inf3 : 0;
+  const inf5  = shsCount;
+
+  // ES metrics
+  const mgPV_kWp  = activeMG.reduce((s,r) => s + num(col(r,'pv capacity','pv cap','solar capacity','kwp')), 0);
+  const shsPV_Wp  = activeSHS.reduce((s,r) => s + num(col(r,'pv','solar','wp','watt')), 0);
+  const es1   = (mgPV_kWp + shsPV_Wp/1000) / 1000; // MWp total
+  const es3   = activeMG.reduce((s,r) => s + num(col(r,'inverter','inv cap')), 0) / 1000; // MW
+  const mgBat_kWh = activeMG.reduce((s,r) => s + num(col(r,'battery','bat cap','kwh')), 0);
+  const shsBat_Wh = activeSHS.reduce((s,r) => s + num(col(r,'battery','bat','wh')), 0);
+  const es4   = (mgBat_kWh + shsBat_Wh/1000) / 1000; // MWh
+  const es5   = es1 * C.SOLAR_YIELD;        // GWh/yr
+  const es7   = ea11 > 0 ? (es5 * 1000000) / (ea11 * 365) : 0; // kWh/conn/day
+  const es8   = activeGE.reduce((s,r) => s + num(col(r,'transformer','mva','kva')), 0);
+
+  // ECO metrics
+  const tariffs = activeMG.map(r => num(col(r,'tariff','rate','₦'))).filter(v => v > 0);
+  const eco1  = tariffs.length > 0 ? tariffs.reduce((a,b) => a+b, 0) / tariffs.length : 0;
+  // Savings: assume replaces kerosene/generator at avg $2/litre, 14.8L/month
+  const monthlySpend = C.PETROL_HH * 2 * 12; // rough USD baseline
+  const eco2  = monthlySpend * 0.6;           // 60% reduction (GOGLA estimate)
+  const eco3  = (ea4 * eco2) / 1e6;           // total USD millions
+
+  // COST metrics
+  const geCost  = activeGE.reduce((s,r) => s + num(col(r,'cost','project cost','capex','₦')), 0);
+  const mgCost  = activeMG.reduce((s,r) => s + num(col(r,'cost','project cost','capex','₦')), 0);
+  const shsCost = activeSHS.reduce((s,r) => s + num(col(r,'cost','system cost','price','₦')), 0);
+  const cost7   = (geCost + mgCost + shsCost) / 1e9; // Billion ₦
+  const cost2   = ea11 > 0 ? (geCost + mgCost + shsCost) / ea11 / 1000 : 0; // K ₦/conn
+  const cost4   = ea1 > 0 ? (geCost + mgCost + shsCost) / ea1 / 1000 : 0;
+  const allProj = activeGE.length + activeMG.length + shsCount;
+  const cost5   = allProj > 0 ? (geCost + mgCost + shsCost) / allProj / 1e6 : 0;
+  const cost6   = inf3 > 0 ? mgCost / inf3 / 1e6 : 0;
+
+  // CLIMATE metrics
+  const cl1   = (totalRes * C.PETROL_HH * 12) / 1e6;                     // M L/yr
+  const cl2   = (cl1 * 1e6 * C.EF_PETROL) / 1000;                        // tCO₂
+  const cl3   = (totalBiz * C.PETROL_BIZ * 12) / 1e6;                    // M L/yr
+  const cl4   = (cl3 * 1e6 * C.EF_PETROL) / 1000;                        // tCO₂
+  const cl5   = (totalInst * C.DIESEL_INST * 12) / 1e6;                   // M L/yr
+  const cl6   = (cl5 * 1e6 * C.EF_DIESEL) / 1000;                        // tCO₂
+  const cl7   = (cl2 + cl4 + cl6) / 1000;                                 // K tCO₂
+
+  // JP metrics
+  const jp1   = Math.round(ea11 * C.JOBS_PER_100 / 100);
+  const jp2   = ea5 * C.REVENUE_BIZ;                                       // USD
+  const jp3   = (ea4 * C.INCOME_HH) / 1e6;                                 // M USD
+  const jp4   = (ea5 * C.PROD_HRS * 52) / 1e6;                            // M hours/yr
+
+  // DEL1 metrics
+  function avgDays(arr) {
+    const days = arr.map(r => {
+      const start = parseDate(col(r,'start date','start','commenced'));
+      const end   = parseDate(col(r,'commissioning','completion','end date','end','completed'));
+      return daysBetween(start, end);
+    }).filter(d => d !== null && d > 0 && d < 5000);
+    return days.length > 0 ? Math.round(days.reduce((a,b)=>a+b,0)/days.length) : null;
+  }
+  const delGE  = avgDays(activeGE);
+  const delMG  = avgDays(activeMG);
+  const delSHS = avgDays(activeSHS);
+  const allDays = [...(activeGE.map((r,i) => daysBetween(parseDate(col(r,'start date','start')), parseDate(col(r,'commissioning','completion','end'))))), ...(activeMG.map(r => daysBetween(parseDate(col(r,'start date','start')), parseDate(col(r,'commissioning','completion','end'))))), ...(activeSHS.map(r => daysBetween(parseDate(col(r,'start date','start')), parseDate(col(r,'commissioning','completion','end')))))].filter(d => d !== null && d > 0 && d < 5000);
+  const delAll = allDays.length > 0 ? Math.round(allDays.reduce((a,b)=>a+b,0)/allDays.length) : null;
+
+  return {
+    ea1, ea4, ea5, ea6, ea6h, ea6s, ea11,
+    inf1, inf2, inf3, inf4, inf5,
+    es1, es3, es4, es5, es7, es8,
+    eco1, eco2, eco3,
+    cost7, cost2, cost4, cost5, cost6,
+    geCost, mgCost, shsCost,
+    cl1, cl2, cl3, cl4, cl5, cl6, cl7,
+    jp1, jp2, jp3, jp4,
+    delAll, delGE, delMG, delSHS,
+    geRes, mgRes, geBiz, mgBiz, geInst, mgInst,
+    geCount: activeGE.length, mgCount: inf3, shsCount,
+    mgPV_kWp, shsPV_Wp,
+    tariffs, tariffStates: activeMG.map(r => col(r,'state')),
+    states: [...new Set([...gef.map(r=>col(r,'state')), ...mgf.map(r=>col(r,'state')), ...shsf.map(r=>col(r,'state'))])].filter(Boolean).sort(),
+    ge: activeGE, mg: activeMG, shs: activeSHS,
+  };
+}
+
+/* ══════════════════════════════════════════════════
+   FORMAT HELPERS
+══════════════════════════════════════════════════ */
+function fmt(n, decimals=1) {
+  if (n === null || isNaN(n)) return '—';
+  if (n >= 1000000) return (n/1000000).toFixed(decimals) + 'M';
+  if (n >= 1000)    return (n/1000).toFixed(decimals) + 'K';
+  return n.toFixed(decimals === 0 ? 0 : decimals);
+}
+function fmtPlain(n, dec=1) {
+  if (n === null || isNaN(n)) return '—';
+  return n.toFixed(dec);
+}
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setBar(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = Math.min(pct, 100) + '%';
+}
+function setInner(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = val;
+}
+
+/* ══════════════════════════════════════════════════
+   RENDER METRICS TO DOM
+══════════════════════════════════════════════════ */
+function renderMetrics(m) {
+  // EA
+  set('ea1', fmt(m.ea1)); setBar('ea1-bar', 80);
+  set('ea4', fmt(m.ea4)); setBar('ea4-bar', 65);
+  set('ea5', fmt(m.ea5)); setBar('ea5-bar', 42);
+  set('ea6', fmt(m.ea6)); setBar('ea6-bar', 38);
+  set('ea6h', fmt(m.ea6h)); setBar('ea6h-bar', 30);
+  set('ea6s', fmt(m.ea6s)); setBar('ea6s-bar', 45);
+  set('ea11', fmt(m.ea11)); setBar('ea11-bar', 70);
+
+  // ES
+  setInner('es1-band', fmtPlain(m.es1) + ' <span class="mb-unit">MWp</span>');
+  setInner('es5-band', fmtPlain(m.es5) + ' <span class="mb-unit">GWh/yr</span>');
+  setInner('es7-band', fmtPlain(m.es7, 2) + ' <span class="mb-unit">kWh/conn/day</span>');
+  set('es1', fmtPlain(m.es1)); setBar('es1-bar', 68);
+  set('es3', fmtPlain(m.es3)); setBar('es3-bar', 55);
+  set('es4', fmtPlain(m.es4)); setBar('es4-bar', 50);
+  set('es5', fmtPlain(m.es5)); setBar('es5-bar', 60);
+  set('es8', fmtPlain(m.es8)); setBar('es8-bar', 45);
+
+  // INF
+  set('inf1', fmt(m.inf1, 0)); setBar('inf1-bar', 55);
+  set('inf2', fmt(m.inf2, 0)); setBar('inf2-bar', 60);
+  set('inf3', fmt(m.inf3, 0)); setBar('inf3-bar', 72);
+  set('inf4', fmtPlain(m.inf4, 0)); setBar('inf4-bar', 48);
+  set('inf5', fmt(m.inf5, 0)); setBar('inf5-bar', 81);
+
+  // ECO
+  set('eco1', fmtPlain(m.eco1, 0)); setBar('eco1-bar', 44);
+  set('eco2', fmtPlain(m.eco2, 0)); setBar('eco2-bar', 52);
+  set('eco3', fmtPlain(m.eco3, 2)); setBar('eco3-bar', 60);
+
+  // COST
+  set('cost7', fmtPlain(m.cost7, 1)); setBar('cost7-bar', 86);
+  set('cost2', fmtPlain(m.cost2, 0)); setBar('cost2-bar', 62);
+  set('cost4', fmtPlain(m.cost4, 0)); setBar('cost4-bar', 50);
+  set('cost5', fmtPlain(m.cost5, 1)); setBar('cost5-bar', 42);
+  set('cost6', fmtPlain(m.cost6, 1)); setBar('cost6-bar', 38);
+
+  // CL
+  const cl7kT = m.cl7;
+  set('cl1', fmtPlain(m.cl1, 2)); setBar('cl1-bar', 90);
+  set('cl2', fmtPlain(m.cl2/1000, 1)); setBar('cl2-bar', 88);
+  set('cl3', fmtPlain(m.cl3, 2)); setBar('cl3-bar', 38);
+  set('cl4', fmtPlain(m.cl4/1000, 2)); setBar('cl4-bar', 35);
+  set('cl5', fmtPlain(m.cl5, 2)); setBar('cl5-bar', 28);
+  set('cl7', fmtPlain(cl7kT, 1)); setBar('cl7-bar', 85);
+  // Climate hero
+  set('cl7-hero', fmtPlain(cl7kT, 1) + ' K tCO₂/yr');
+  set('cl1-hero', fmtPlain(m.cl1, 1) + ' M L/yr');
+  set('cl2-hero', fmtPlain(m.cl2/1000, 1) + ' K tCO₂/yr');
+
+  // JP
+  set('jp1', fmt(m.jp1, 0));
+  set('jp2', '$' + fmt(m.jp2, 0));
+  set('jp3', '$' + fmtPlain(m.jp3, 2) + 'M');
+  set('jp4', fmtPlain(m.jp4, 1) + 'M hrs/yr');
+
+  // DEL
+  set('del-all', m.delAll !== null ? m.delAll : '—');
+  set('del-ge',  m.delGE  !== null ? m.delGE  : '—');
+  set('del-mg',  m.delMG  !== null ? m.delMG  : '—');
+  set('del-shs', m.delSHS !== null ? m.delSHS : '—');
+  const maxDel = Math.max(m.delAll||0, m.delGE||0, m.delMG||0, m.delSHS||0);
+  if (maxDel > 0) {
+    setBar('del-all-bar', (m.delAll||0)/maxDel*100);
+    setBar('del-ge-bar',  (m.delGE||0)/maxDel*100);
+    setBar('del-mg-bar',  (m.delMG||0)/maxDel*100);
+    setBar('del-shs-bar', (m.delSHS||0)/maxDel*100);
+  }
+
+  // Header stats
+  set('stat-ge', m.geCount);
+  set('stat-mg', m.mgCount);
+  set('stat-shs', m.shsCount);
+  set('stat-states', m.states.length);
+
+  // Period label
+  const now = new Date();
+  document.getElementById('period-label').textContent = now.getFullYear() + ' · Live';
+
+  // Project table
+  renderProjTable(m);
+
+  // All metrics table
+  renderAllMetrics(m);
+}
+
+/* ══════════════════════════════════════════════════
+   PROJECT TABLE
+══════════════════════════════════════════════════ */
+function renderProjTable(m) {
+  const tbody = document.getElementById('proj-tbody');
+  tbody.innerHTML = '';
+  const allProj = [
+    ...m.ge.slice(0,30).map(r => ({ prog: col(r,'programme','program'), state: col(r,'state'), lga: col(r,'lga'), community: col(r,'community','site'), tech:'Grid Extension', res: num(col(r,'residential','household')), biz: num(col(r,'commercial','business')), inst: num(col(r,'institutional','institution')) })),
+    ...m.mg.slice(0,30).map(r => ({ prog: col(r,'programme','program'), state: col(r,'state'), lga: col(r,'lga'), community: col(r,'community','site'), tech:'Mini-Grid', res: num(col(r,'residential','household')), biz: num(col(r,'commercial','business')), inst: num(col(r,'institutional','institution')) })),
+    ...m.shs.slice(0,20).map(r => ({ prog: col(r,'programme','program'), state: col(r,'state'), lga: col(r,'lga'), community: col(r,'community','lga'), tech:'SHS', res: 1, biz: 0, inst: 0 })),
+  ];
+  allProj.forEach(p => {
+    const total = p.res + p.biz + p.inst;
+    const tier  = total > 400 ? '<span class="tier-pill t5">Tier 5</span>' : total > 150 ? '<span class="tier-pill t4">Tier 4</span>' : '<span class="tier-pill t3">Tier 3</span>';
+    const techFam = p.tech === 'Mini-Grid' ? 'ea' : p.tech === 'Grid Extension' ? 'inf' : 'es';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="font-weight:600">${p.prog||'—'}</td><td style="color:var(--ink-50)">${p.state||'—'}</td><td style="color:var(--ink-50)">${p.lga||'—'}</td><td>${p.community||'—'}</td><td><span class="td-fam fam-${techFam}">${p.tech}</span></td><td class="td-val">${p.res||'—'}</td><td class="td-val">${p.biz||'—'}</td><td class="td-val">${p.inst||'—'}</td><td class="td-val" style="color:var(--g700)">${total||'—'}</td><td>${tier}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   ALL METRICS TABLE
+══════════════════════════════════════════════════ */
+function renderAllMetrics(m) {
+  const tbody = document.getElementById('all-tbody');
+  tbody.innerHTML = '';
+  const rows = [
+    {c:'EA1',  n:'People with Electricity Access',     f:'ea',   v:fmt(m.ea1),          u:'persons',      method:'HH connections × HH_Size(6)'},
+    {c:'EA4',  n:'Households Electrified',              f:'ea',   v:fmt(m.ea4),          u:'HH',           method:'Residential conn + SHS units'},
+    {c:'EA5',  n:'Businesses & MSMEs Electrified',     f:'ea',   v:fmt(m.ea5),          u:'businesses',   method:'Commercial connections (GE + MG)'},
+    {c:'EA6',  n:'Public Institutions Electrified',    f:'ea',   v:fmt(m.ea6),          u:'institutions', method:'Institutional connections (GE + MG)'},
+    {c:'EA11', n:'Total Connections (All)',             f:'ea',   v:fmt(m.ea11),         u:'connections',  method:'Sum of all connection types + SHS'},
+    {c:'ES1',  n:'Installed PV Capacity',              f:'es',   v:fmtPlain(m.es1),     u:'MWp',          method:'Sum kWp (MG) + Sum Wp (SHS) / 1000'},
+    {c:'ES3',  n:'Installed Inverter Capacity',        f:'es',   v:fmtPlain(m.es3),     u:'MW',           method:'Sum inverter kW (MG) / 1000'},
+    {c:'ES4',  n:'Installed Battery Capacity',         f:'es',   v:fmtPlain(m.es4),     u:'MWh',          method:'Sum kWh (MG) + Sum Wh (SHS) / 1000'},
+    {c:'ES5',  n:'Annual Energy Generated (est.)',     f:'es',   v:fmtPlain(m.es5),     u:'GWh/yr',       method:'ES1 (MWp) × Solar Yield (1.453)'},
+    {c:'ES7',  n:'Energy per Connection per Day',      f:'es',   v:fmtPlain(m.es7,2),   u:'kWh/conn/day', method:'ES5 / EA11 / 365'},
+    {c:'ES8',  n:'Transformer Capacity Added',         f:'es',   v:fmtPlain(m.es8),     u:'MVA',          method:'Sum transformer MVA (GE)'},
+    {c:'INF1', n:'Network Length Deployed',            f:'inf',  v:fmt(m.inf1,0),       u:'km',           method:'Sum network km (GE)'},
+    {c:'INF2', n:'Number of Poles Installed',          f:'inf',  v:fmt(m.inf2,0),       u:'poles',        method:'Sum poles (GE)'},
+    {c:'INF3', n:'Mini-Grid Sites Deployed',           f:'inf',  v:fmt(m.inf3,0),       u:'sites',        method:'Count of MG rows'},
+    {c:'INF4', n:'Avg. Connections per MG Site',       f:'inf',  v:fmtPlain(m.inf4,0),  u:'conn/site',    method:'MG total connections / INF3'},
+    {c:'INF5', n:'Solar Home Systems Deployed',        f:'inf',  v:fmt(m.inf5,0),       u:'SHS units',    method:'Count of SHS rows'},
+    {c:'ECO1', n:'Average Electricity Tariff',         f:'eco',  v:'₦'+fmtPlain(m.eco1,0), u:'₦/kWh',   method:'Average tariff column (MG)'},
+    {c:'ECO2', n:'Avg. Annual HH Cost Savings',        f:'eco',  v:'$'+fmtPlain(m.eco2,0), u:'USD/HH/yr', method:'Estimated generator cost reduction'},
+    {c:'ECO3', n:'Total Annual HH Cost Savings',       f:'eco',  v:'$'+fmtPlain(m.eco3,2)+'M', u:'USD/yr', method:'EA4 × ECO2'},
+    {c:'COST7',n:'Cumulative Investment (All)',        f:'cost', v:'₦'+fmtPlain(m.cost7,1)+'B', u:'NGN', method:'Sum project costs (GE+MG+SHS)'},
+    {c:'COST2',n:'CAPEX per Connection',              f:'cost', v:'₦'+fmtPlain(m.cost2,0)+'K', u:'₦/conn', method:'Total cost / EA11'},
+    {c:'COST4',n:'Cost per Person Electrified',       f:'cost', v:'₦'+fmtPlain(m.cost4,0)+'K', u:'₦/person', method:'Total cost / EA1'},
+    {c:'CL1',  n:'Petrol Displaced — Households',     f:'cl',   v:fmtPlain(m.cl1,2)+'M L', u:'L/yr',   method:'EA4(HH) × 14.8 L/mo × 12'},
+    {c:'CL2',  n:'CO₂ Avoided — Households',          f:'cl',   v:fmt(m.cl2,0)+' tCO₂', u:'tCO₂/yr', method:'CL1 × 2.3 kg/L'},
+    {c:'CL3',  n:'Petrol Displaced — Businesses',     f:'cl',   v:fmtPlain(m.cl3,2)+'M L', u:'L/yr',   method:'EA5 × 15 L/mo × 12'},
+    {c:'CL4',  n:'CO₂ Avoided — Businesses',          f:'cl',   v:fmt(m.cl4,0)+' tCO₂', u:'tCO₂/yr', method:'CL3 × 2.3 kg/L'},
+    {c:'CL5',  n:'Diesel Displaced — Institutions',   f:'cl',   v:fmtPlain(m.cl5,2)+'M L', u:'L/yr',   method:'EA6 × 11.2 L/mo × 12'},
+    {c:'CL7',  n:'Total CO₂ Avoided (All)',           f:'cl',   v:fmtPlain(m.cl7,1)+' K tCO₂', u:'tCO₂/yr', method:'CL2 + CL4 + CL6'},
+    {c:'JP1',  n:'Direct Jobs Created (FTE)',          f:'jp',   v:fmt(m.jp1,0),        u:'FTE jobs',     method:'EA11 × 8 / 100 (GOGLA)'},
+    {c:'JP2',  n:'Additional Business Revenue',        f:'jp',   v:'$'+fmt(m.jp2,0),    u:'USD/yr',       method:'EA5 × $31 (GOGLA W. Africa)'},
+    {c:'JP3',  n:'Additional Household Income',        f:'jp',   v:'$'+fmtPlain(m.jp3,2)+'M', u:'USD/yr', method:'EA4 × $31/HH (GOGLA)'},
+    {c:'JP4',  n:'Productive Hours Unlocked',          f:'jp',   v:fmtPlain(m.jp4,1)+'M', u:'hours/yr',  method:'EA5 × 9.5 hrs/wk × 52'},
+    {c:'DEL1', n:'Avg. Project Delivery Duration',     f:'del',  v:m.delAll !== null ? m.delAll+' days' : '—', u:'days', method:'Avg (commissioning - start) per project'},
+  ];
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="td-code">${r.c}</td><td style="font-weight:500">${r.n}</td><td><span class="td-fam fam-${r.f}">${{ea:'Energy Access',es:'Energy Supply',inf:'Infrastructure',eco:'Affordability',cost:'Cost Efficiency',cl:'Climate',jp:'Jobs & Income',del:'Delivery'}[r.f]}</span></td><td class="td-val" style="color:var(--g800)">${r.v}</td><td style="font-size:10px;color:var(--ink-30)">${r.u}</td><td style="font-size:10px;color:var(--ink-30)">${r.method}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   CHARTS
+══════════════════════════════════════════════════ */
+const INK = 'rgba(12,26,15,';
+Chart.defaults.color = INK+'.38)';
+Chart.defaults.borderColor = INK+'.07)';
+Chart.defaults.font.family = "'Plus Jakarta Sans',sans-serif";
+Chart.defaults.font.size = 11;
+const G = {color:INK+'.06)'};
+const TT = {backgroundColor:'#fff',borderColor:INK+'.10)',borderWidth:1,titleColor:INK+'.85)',bodyColor:INK+'.55)',padding:11,cornerRadius:8};
+const tk = cb => ({color:INK+'.35)',font:{size:10,weight:'500'},...(cb?{callback:cb}:{})});
+
+function initCharts() {
+  CHARTS.stateBar = new Chart(document.getElementById('stateBar'), {type:'bar',data:{labels:[],datasets:[]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',align:'end',labels:{color:INK+'.55)',boxWidth:8,boxHeight:8,borderRadius:4,padding:10,font:{size:10,weight:'600'}}},tooltip:TT},scales:{x:{stacked:true,grid:G,ticks:tk(),border:{display:false}},y:{stacked:true,grid:G,ticks:tk(v=>v>=1000?(v/1000).toFixed(0)+'K':v),border:{display:false}}}}});
+  CHARTS.instType = new Chart(document.getElementById('instType'), {type:'bar',data:{labels:['Hospitals','Schools','Other Institutions'],datasets:[]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',align:'end',labels:{color:INK+'.55)',boxWidth:8,boxHeight:8,borderRadius:4,padding:10,font:{size:10,weight:'600'}}},tooltip:TT},scales:{x:{grid:{display:false},ticks:tk(),border:{display:false}},y:{grid:G,ticks:tk(),border:{display:false}}}}});
+  CHARTS.pvProg = new Chart(document.getElementById('pvProg'), {type:'bar',data:{labels:[],datasets:[{label:'MWp',data:[],backgroundColor:'rgba(34,135,68,.75)',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:TT},scales:{x:{grid:G,ticks:tk(v=>v+' MWp'),border:{display:false}},y:{grid:{display:false},ticks:{color:INK+'.5)',font:{size:10,weight:'600'}},border:{display:false}}}}});
+  CHARTS.energyTech = new Chart(document.getElementById('energyTech'), {type:'bar',data:{labels:['Mini-Grid','SHS'],datasets:[{label:'GWh/yr',data:[0,0],backgroundColor:['rgba(15,123,130,.75)','rgba(34,135,68,.75)'],borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},scales:{x:{grid:{display:false},ticks:tk(),border:{display:false}},y:{grid:G,ticks:tk(v=>v+' GWh'),border:{display:false}}}}});
+  CHARTS.tariffBar = new Chart(document.getElementById('tariffBar'), {type:'bar',data:{labels:[],datasets:[{label:'₦/kWh',data:[],backgroundColor:'rgba(34,135,68,.70)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>'  ₦'+ctx.parsed.y+'/kWh'}}},scales:{x:{grid:{display:false},ticks:tk(),border:{display:false}},y:{grid:G,ticks:tk(v=>'₦'+v),border:{display:false}}}}});
+  CHARTS.costTech = new Chart(document.getElementById('costTech'), {type:'bar',data:{labels:['Grid Extension','Mini-Grid','SHS'],datasets:[{label:'₦ Billion',data:[0,0,0],backgroundColor:['rgba(15,61,30,.80)','rgba(34,135,68,.80)','rgba(78,201,122,.75)'],borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:TT},scales:{x:{grid:{display:false},ticks:tk(),border:{display:false}},y:{grid:G,ticks:tk(v=>'₦'+v+'B'),border:{display:false}}}}});
+  CHARTS.costState = new Chart(document.getElementById('costState'), {type:'bar',data:{labels:[],datasets:[{label:'₦M',data:[],backgroundColor:'rgba(34,135,68,.70)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>'  ₦'+ctx.parsed.x.toFixed(0)+'M'}}},scales:{x:{grid:G,ticks:tk(v=>'₦'+v+'M'),border:{display:false}},y:{grid:{display:false},ticks:{color:INK+'.5)',font:{size:10,weight:'600'}},border:{display:false}}}}});
+  CHARTS.co2Cat = new Chart(document.getElementById('co2Cat'), {type:'doughnut',data:{labels:['Households','Businesses','Institutions'],datasets:[{data:[0,0,0],backgroundColor:['rgba(34,135,68,.85)','rgba(196,154,26,.80)','rgba(15,123,130,.80)'],borderWidth:3,borderColor:'#fff',hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{color:INK+'.5)',boxWidth:8,boxHeight:8,borderRadius:4,padding:8,font:{size:10}}},tooltip:{...TT,callbacks:{label:ctx=>'  '+ctx.parsed.toLocaleString()+' tCO₂/yr'}}}}});
+  CHARTS.fuelDisp = new Chart(document.getElementById('fuelDisp'), {type:'bar',data:{labels:['HH Petrol (CL1)','Biz Petrol (CL3)','Inst Diesel (CL5)'],datasets:[{label:'M L/yr',data:[0,0,0],backgroundColor:['rgba(34,135,68,.75)','rgba(196,154,26,.75)','rgba(15,123,130,.75)'],borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>'  '+ctx.parsed.y.toFixed(2)+'M L/yr'}}},scales:{x:{grid:{display:false},ticks:tk(),border:{display:false}},y:{grid:G,ticks:tk(v=>v+'M L'),border:{display:false}}}}});
+  CHARTS.delivState = new Chart(document.getElementById('delivState'), {type:'bar',data:{labels:[],datasets:[{label:'Days',data:[],backgroundColor:'rgba(34,135,68,.70)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>'  '+ctx.parsed.x.toFixed(0)+' days'}}},scales:{x:{grid:G,ticks:tk(v=>v+' days'),border:{display:false}},y:{grid:{display:false},ticks:{color:INK+'.5)',font:{size:10,weight:'600'}},border:{display:false}}}}});
+}
+
+function updateCharts(m) {
+  // State bar
+  const states = m.states.slice(0, 12);
+  const geByState = states.map(s => (m.ge.filter(r=>col(r,'state')===s).reduce((a,r)=>a+num(col(r,'residential','household'))+num(col(r,'commercial','business'))+num(col(r,'institutional','institution')),0)));
+  const mgByState = states.map(s => (m.mg.filter(r=>col(r,'state')===s).reduce((a,r)=>a+num(col(r,'residential','household'))+num(col(r,'commercial','business'))+num(col(r,'institutional','institution')),0)));
+  const shsByState = states.map(s => m.shs.filter(r=>col(r,'state')===s).length);
+  CHARTS.stateBar.data.labels = states;
+  CHARTS.stateBar.data.datasets = [
+    {label:'Grid Ext.',data:geByState,backgroundColor:'rgba(34,135,68,.75)',borderRadius:3,borderSkipped:false},
+    {label:'Mini-Grid',data:mgByState,backgroundColor:'rgba(44,168,87,.65)',borderRadius:3,borderSkipped:false},
+    {label:'SHS',data:shsByState,backgroundColor:'rgba(78,201,122,.55)',borderRadius:3,borderSkipped:false},
+  ];
+  CHARTS.stateBar.update();
+
+  // Inst type
+  CHARTS.instType.data.datasets = [
+    {label:'Grid Ext.',data:[m.ge.reduce((s,r)=>s+num(col(r,'hospital')),0),m.ge.reduce((s,r)=>s+num(col(r,'school')),0),m.ge.reduce((s,r)=>s+num(col(r,'public fac','facility')),0)],backgroundColor:'rgba(34,135,68,.80)',borderRadius:4},
+    {label:'Mini-Grid',data:[m.mg.reduce((s,r)=>s+num(col(r,'hospital')),0),m.mg.reduce((s,r)=>s+num(col(r,'school')),0),m.mg.reduce((s,r)=>s+num(col(r,'public fac','facility')),0)],backgroundColor:'rgba(44,168,87,.65)',borderRadius:4},
+  ];
+  CHARTS.instType.update();
+
+  // PV by programme
+  const progs = {};
+  [...m.ge, ...m.mg].forEach(r => {
+    const p = col(r,'programme','program') || 'Other';
+    const pv = num(col(r,'pv capacity','pv cap','kwp')) || 0;
+    progs[p] = (progs[p]||0) + pv/1000;
+  });
+  const pvEntries = Object.entries(progs).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  CHARTS.pvProg.data.labels = pvEntries.map(e=>e[0]);
+  CHARTS.pvProg.data.datasets[0].data = pvEntries.map(e=>+e[1].toFixed(2));
+  CHARTS.pvProg.update();
+
+  // Energy by tech
+  const mgGWh = (m.mgPV_kWp/1000) * C.SOLAR_YIELD;
+  const shsGWh = (m.shsPV_Wp/1e6) * C.SOLAR_YIELD;
+  CHARTS.energyTech.data.datasets[0].data = [+mgGWh.toFixed(2), +shsGWh.toFixed(2)];
+  CHARTS.energyTech.update();
+
+  // Tariff by state
+  const tariffMap = {};
+  m.mg.forEach((r,i) => {
+    const s = col(r,'state');
+    const t = num(col(r,'tariff','rate'));
+    if (s && t > 0) { if (!tariffMap[s]) tariffMap[s]=[]; tariffMap[s].push(t); }
+  });
+  const tariffStates = Object.keys(tariffMap).slice(0,10);
+  CHARTS.tariffBar.data.labels = tariffStates;
+  CHARTS.tariffBar.data.datasets[0].data = tariffStates.map(s => +(tariffMap[s].reduce((a,b)=>a+b,0)/tariffMap[s].length).toFixed(0));
+  CHARTS.tariffBar.update();
+
+  // Cost by tech
+  CHARTS.costTech.data.datasets[0].data = [+(m.geCost/1e9).toFixed(2), +(m.mgCost/1e9).toFixed(2), +(m.shsCost/1e9).toFixed(2)];
+  CHARTS.costTech.update();
+
+  // Cost by state
+  const costMap = {};
+  [...m.ge,...m.mg].forEach(r => {
+    const s = col(r,'state'); const c = num(col(r,'cost','project cost','capex'));
+    if (s) costMap[s] = (costMap[s]||0) + c;
+  });
+  const costEntries = Object.entries(costMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  CHARTS.costState.data.labels = costEntries.map(e=>e[0]);
+  CHARTS.costState.data.datasets[0].data = costEntries.map(e=>+(e[1]/1e6).toFixed(0));
+  CHARTS.costState.update();
+
+  // CO2 donut
+  CHARTS.co2Cat.data.datasets[0].data = [+m.cl2.toFixed(0), +m.cl4.toFixed(0), +(m.cl5*1e6*C.EF_DIESEL/1000).toFixed(0)];
+  CHARTS.co2Cat.update();
+
+  // Fuel displaced
+  CHARTS.fuelDisp.data.datasets[0].data = [+m.cl1.toFixed(2), +m.cl3.toFixed(2), +m.cl5.toFixed(2)];
+  CHARTS.fuelDisp.update();
+
+  // Delivery by state
+  const delMap = {};
+  [...m.ge,...m.mg].forEach(r => {
+    const s = col(r,'state');
+    const d = daysBetween(parseDate(col(r,'start date','start')), parseDate(col(r,'commissioning','completion','end')));
+    if (s && d && d > 0 && d < 5000) { if (!delMap[s]) delMap[s]=[]; delMap[s].push(d); }
+  });
+  const delEntries = Object.entries(delMap).map(([s,v])=>[s, Math.round(v.reduce((a,b)=>a+b,0)/v.length)]).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  CHARTS.delivState.data.labels = delEntries.map(e=>e[0]);
+  CHARTS.delivState.data.datasets[0].data = delEntries.map(e=>e[1]);
+  CHARTS.delivState.update();
+}
+
+/* ══════════════════════════════════════════════════
+   FETCH & LOAD
+══════════════════════════════════════════════════ */
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.innerHTML = `<strong>⚠ Data Error:</strong> ${msg}`;
+  el.classList.add('visible');
+}
+function clearError() { document.getElementById('errorBanner').classList.remove('visible'); }
+
+async function fetchSheet(tab) {
+  return new Promise((resolve, reject) => {
+    const url = csvUrl(tab);
+    Papa.parse(url, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: res => resolve(res.data),
+      error: err => reject(err),
+    });
+  });
+}
+
+async function loadData() {
+  if (CONFIG.SHEET_ID === 'YOUR_SHEET_ID_HERE') {
+    document.getElementById('loader').classList.add('hidden');
+    showError('Please replace <code>YOUR_SHEET_ID_HERE</code> in the CONFIG block at the top of this file with your actual Google Sheet ID. See the setup guide for instructions.');
+    return;
+  }
+  clearError();
+  document.getElementById('loader').classList.remove('hidden');
+  document.getElementById('loader-sub').textContent = 'Fetching from Google Sheets…';
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('loading');
+
+  try {
+    document.getElementById('loader-sub').textContent = 'Loading Grid Extension…';
+    RAW.ge = await fetchSheet(CONFIG.TABS.GRID);
+    document.getElementById('loader-sub').textContent = 'Loading Mini Grid…';
+    RAW.mg = await fetchSheet(CONFIG.TABS.MINI);
+    document.getElementById('loader-sub').textContent = 'Loading SHS…';
+    RAW.shs = await fetchSheet(CONFIG.TABS.SHS);
+
+    // Populate state filter
+    const allStates = [...new Set([...RAW.ge.map(r=>col(r,'state')),...RAW.mg.map(r=>col(r,'state')),...RAW.shs.map(r=>col(r,'state'))].filter(Boolean))].sort();
+    const sel = document.getElementById('stateFilter');
+    sel.innerHTML = '<option value="All">All States</option>' + allStates.map(s=>`<option>${s}</option>`).join('');
+
+    METRICS = computeMetrics(RAW.ge, RAW.mg, RAW.shs);
+    renderMetrics(METRICS);
+    updateCharts(METRICS);
+
+    const now = new Date();
+    document.getElementById('lastSync').textContent = 'Updated ' + now.toLocaleTimeString();
+
+    document.getElementById('loader').classList.add('hidden');
+  } catch(e) {
+    document.getElementById('loader').classList.add('hidden');
+    showError(`Could not fetch data. Make sure your Google Sheet is published (File → Share → Publish to web). Error: ${e.message||e}`);
+    console.error(e);
+  }
+  btn.classList.remove('loading');
+}
+
+function applyFilter() {
+  currentState = document.getElementById('stateFilter').value;
+  METRICS = computeMetrics(RAW.ge, RAW.mg, RAW.shs);
+  renderMetrics(METRICS);
+  updateCharts(METRICS);
+}
+
+function setTech(tech, el) {
+  currentTech = tech;
+  document.querySelectorAll('.tt').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  METRICS = computeMetrics(RAW.ge, RAW.mg, RAW.shs);
+  renderMetrics(METRICS);
+  updateCharts(METRICS);
+}
+
+function setNav(el) {
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function exportCSV() {
+  const rows = [['Programme','State','LGA','Community','Technology','Residential','Commercial','Institutional','Total']];
+  const pushRows = (arr, tech) => arr.forEach(r => {
+    const res = num(col(r,'residential','household'));
+    const biz = num(col(r,'commercial','business'));
+    const inst = num(col(r,'institutional','institution'));
+    rows.push([col(r,'programme','program'),col(r,'state'),col(r,'lga'),col(r,'community','site'),tech,res,biz,inst,res+biz+inst]);
+  });
+  pushRows(RAW.ge,'Grid Extension');
+  pushRows(RAW.mg,'Mini-Grid');
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'REA_SIM_Projects.csv';
+  a.click();
+}
+
+function exportMetrics() {
+  alert('Connect Google Sheets API or use the Export CSV button. Full XLSX export requires a server-side component.');
+}
+
+// Scroll spy
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+      const m = document.querySelector(`.ni[href="#${e.target.id}"]`);
+      if (m) m.classList.add('active');
+    }
+  });
+}, {threshold:.2, rootMargin:'-70px 0px -50% 0px'});
+document.querySelectorAll('.section').forEach(s=>observer.observe(s));
+
+// Init
+initCharts();
+loadData();
+</script>
+</body>
+</html>
